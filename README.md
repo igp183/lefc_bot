@@ -5,10 +5,11 @@ Built and maintained by students.
 
 ## Features
 
-- `/ping` — Check bot latency
-- `/about` — Info about the bot
-- `/resources` — Useful links for the course (filterable by category)
-- `/roles` — Self-assign year and interest roles
+- `/help` Veriy the available commands
+- `/ping` Check bot latency
+- `/about` Info about the bot
+- `/resources` Useful links for the course (filterable by category)
+- `/roles` Self-assign year and other roles
 
 ## Want to Contribute?
 
