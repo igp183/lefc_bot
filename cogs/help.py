@@ -2,25 +2,32 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+EMBED_COLOR = 0x5865F2  # Discord blurple
+DEFAULT_COG_EMOJI = "📦"
+
+
+def get_cog_emoji(cog: commands.Cog) -> str:
+    """Gets an emoji from a cog. Define `emoji = '...'` within the cog to customize."""
+    return getattr(cog, "emoji", DEFAULT_COG_EMOJI)
+
 
 class HelpSelect(discord.ui.Select):
-    """Dropdown menu that lets users pick a cog to see its commands"""
+    """Dropdown that lets you choose a cog and see its commands"""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         options = []
+
         for cog_name, cog in bot.cogs.items():
-            if cog_name == "Help":
-                continue  # don't list ourselves
             description = cog.description or "Sem descrição"
-            # Truncate to 100 chars which is the discord limit for select descriptions
             if len(description) > 100:
                 description = description[:97] + "..."
+
             options.append(
                 discord.SelectOption(
                     label=cog_name,
                     description=description,
-                    emoji=getattr(cog, "emoji", None),
+                    emoji=get_cog_emoji(cog),
                 )
             )
 
@@ -37,16 +44,19 @@ class HelpSelect(discord.ui.Select):
     async def callback(self, interaction: discord.Interaction):
         cog_name = self.values[0]
         cog = self.bot.get_cog(cog_name)
+
         if cog is None:
             await interaction.response.send_message(
                 "Esse módulo já não existe.", ephemeral=True
             )
             return
 
+        emoji = get_cog_emoji(cog)
+
         embed = discord.Embed(
-            title=f"{cog_name}",
+            title=f"{emoji}  {cog_name}",
             description=cog.description or "Sem descrição.",
-            color=discord.Color.blue(),
+            color=EMBED_COLOR,
         )
 
         # Slash commands
@@ -55,12 +65,10 @@ class HelpSelect(discord.ui.Select):
             lines = []
             for cmd in slash_cmds:
                 params = " ".join(f"`<{p.name}>`" for p in cmd.parameters)
-                line = f"**/{cmd.name}** {params}"
-                if cmd.description:
-                    line += f"\n  {cmd.description}"
-                lines.append(line)
+                desc = f" — {cmd.description}" if cmd.description else ""
+                lines.append(f"`/{cmd.name}` {params}{desc}")
             embed.add_field(
-                name="Comandos de barra",
+                name="Comandos Slash",
                 value="\n".join(lines),
                 inline=False,
             )
@@ -70,13 +78,11 @@ class HelpSelect(discord.ui.Select):
         if prefix_cmds:
             lines = []
             for cmd in prefix_cmds:
-                sig = cmd.signature or ""
-                line = f"**!{cmd.name}** {sig}"
-                if cmd.short_doc:
-                    line += f"\n  {cmd.short_doc}"
-                lines.append(line)
+                sig = f" {cmd.signature}" if cmd.signature else ""
+                desc = f" — {cmd.short_doc}" if cmd.short_doc else ""
+                lines.append(f"`!{cmd.name}{sig}`{desc}")
             embed.add_field(
-                name="Comandos de prefixo",
+                name="Comandos com Prefixo",
                 value="\n".join(lines),
                 inline=False,
             )
@@ -84,59 +90,65 @@ class HelpSelect(discord.ui.Select):
         if not slash_cmds and not prefix_cmds:
             embed.add_field(
                 name="Comandos",
-                value="Este módulo não tem comandos (pode simplesmente reagir a eventos).",
+                value="Este módulo não tem comandos (apenas aguarda por eventos).",
                 inline=False,
             )
 
+        embed.set_footer(text="Usa o dropdown para explorar outros módulos.")
         await interaction.response.edit_message(embed=embed, view=self.view)
 
 
 class HelpView(discord.ui.View):
     def __init__(self, bot: commands.Bot):
-        super().__init__(timeout=120)
+        super().__init__(timeout=180)
         self.add_item(HelpSelect(bot))
+        self.message: discord.Message | None = None
 
     async def on_timeout(self):
         for item in self.children:
             item.disabled = True
+        if self.message:
+            try:
+                await self.message.edit(view=self)
+            except discord.NotFound:
+                pass
 
 
 class Help(commands.Cog):
-    """Shows an overview of all available commands"""
+    """Shows all the commands available on the bot."""
+
+    emoji = "❓"
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        # Remove the default help command so ours doesn't conflict
         self.bot.remove_command("help")
 
-    @app_commands.command(
-        name="help", description="Verifica todos os comandos disponíveis"
-    )
+    @app_commands.command(name="help", description="Vê todos os comandos disponíveis")
     async def help_slash(self, interaction: discord.Interaction):
         embed = self._build_overview()
         view = HelpView(self.bot)
         await interaction.response.send_message(embed=embed, view=view)
+        view.message = await interaction.original_response()
 
     @commands.command(name="help")
     async def help_prefix(self, ctx: commands.Context):
-        """See all available commands."""
+        """Vê todos os comandos disponíveis."""
         embed = self._build_overview()
         view = HelpView(self.bot)
-        await ctx.send(embed=embed, view=view)
+        view.message = await ctx.send(embed=embed, view=view)
 
     def _build_overview(self) -> discord.Embed:
         embed = discord.Embed(
-            title="Comandos do bot",
+            title="📖  Comandos do Bot",
             description=(
-                "Usa o dropwdown a baixo para explorar os módulos, "
-                "de qualquer forma aqui estão todos os comandos."
+                "Aqui tens uma visão geral de todos os comandos disponíveis.\n"
+                "Usa o dropdown abaixo para explorar cada módulo em detalhe."
             ),
-            color=discord.Color.blue(),
+            color=EMBED_COLOR,
         )
 
         for cog_name, cog in self.bot.cogs.items():
-            if cog_name == "Help":
-                continue
+            emoji = get_cog_emoji(cog)
 
             cmd_names = []
             for cmd in cog.get_app_commands():
@@ -147,12 +159,12 @@ class Help(commands.Cog):
 
             if cmd_names:
                 embed.add_field(
-                    name=cog_name,
-                    value=" ".join(cmd_names),
+                    name=f"{emoji}  {cog_name}",
+                    value=" · ".join(cmd_names),
                     inline=False,
                 )
 
-        embed.set_footer(text="Seleciona um módulo para ver mais detalhes.")
+        embed.set_footer(text="Seleciona um módulo abaixo para ver mais detalhes.")
         return embed
 
 
