@@ -40,6 +40,7 @@ from discord import app_commands
 
 class MyFeature(commands.Cog):
     """Short description of what this does."""
+    emoji = "🏷️" # optional, used for the help command
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
