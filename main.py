@@ -2,12 +2,11 @@ import asyncio
 import os
 
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# simply the bot setup
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
@@ -18,8 +17,31 @@ bot = commands.Bot(
     description="Computational Physics Engineering Bot",
 )
 
+# Rotating status
+STATUSES = [
+    discord.Activity(type=discord.ActivityType.playing, name="⚛️ A estudar plasmas"),
+    discord.Activity(
+        type=discord.ActivityType.watching, name="📖 /help para ver os comandos"
+    ),
+    discord.Activity(
+        type=discord.ActivityType.competing, name="🧮 Engenharia Física e Computacional"
+    ),
+    discord.Activity(type=discord.ActivityType.listening, name="🎓 Estudem Cálculo!"),
+]
 
-# loads everything from the cogs folder
+
+@tasks.loop(minutes=5)
+async def rotate_status():
+    status = STATUSES[rotate_status.current_loop % len(STATUSES)]
+    await bot.change_presence(activity=status)
+
+
+@rotate_status.before_loop
+async def before_rotate():
+    await bot.wait_until_ready()  # don't start until the bot is connected
+
+
+# Load cogs
 async def load_cogs():
     for filename in os.listdir("./cogs"):
         if filename.endswith(".py") and filename != "__init__.py":
@@ -34,7 +56,12 @@ async def load_cogs():
 async def on_ready():
     print(f"Logged in as {bot.user} (ID: {bot.user.id})")
     print(f"Connected to {len(bot.guilds)} server(s)")
-    # syncs slash commands with discord
+
+    # Start rotating status
+    if not rotate_status.is_running():
+        rotate_status.start()
+
+    # Sync slash commands
     try:
         synced = await bot.tree.sync()
         print(f"Synced {len(synced)} slash command(s)")
@@ -42,6 +69,7 @@ async def on_ready():
         print(f"Failed to sync commands: {e}")
 
 
+# Run
 async def main():
     async with bot:
         await load_cogs()
